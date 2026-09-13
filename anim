@@ -283,6 +283,27 @@ end
 local ATTR_LAST = "AnimPack_Last"
 local applying = false
 local originalAnims = {}
+local lastPackName = ""
+
+local SAVE_FILE = "tozos_anim_save.txt"
+
+local function savePackToFile(name)
+    pcall(function()
+        writefile(SAVE_FILE, name)
+    end)
+end
+
+local function loadPackFromFile()
+    local ok, result = pcall(function()
+        return readfile(SAVE_FILE)
+    end)
+    if ok and type(result) == "string" and result ~= "" and PACKS[result] then
+        return result
+    end
+    return nil
+end
+
+
 
 local function saveOriginals(animate)
     if next(originalAnims) ~= nil then return end -- already saved
@@ -384,7 +405,9 @@ local function applyPack(packName)
 		end)
 	end
 
+		lastPackName = packName
 	pcall(function() player:SetAttribute(ATTR_LAST, packName) end)
+	savePackToFile(packName)
 
 	applying = false
 	return true
@@ -392,8 +415,9 @@ end
 
 local function saveOriginalsFromChar(char)
     originalAnims = {}
-    local animate = waitForAnimate(char)
+    local animate = char:WaitForChild("Animate", 10)
     if not animate then return end
+    task.wait(0.5) -- let Roblox populate animation IDs
     local function s(folder, animName)
         if not folder then return end
         local a = folder:FindFirstChild(animName)
@@ -419,15 +443,7 @@ task.spawn(function()
     saveOriginalsFromChar(char)
 end)
 
--- Reapply on respawn (session)
-player.CharacterAdded:Connect(function(char)
-	saveOriginalsFromChar(char)
-	task.wait(0.6)
-	local saved = player:GetAttribute(ATTR_LAST)
-	if type(saved) == "string" and saved ~= "" and PACKS[saved] then
-		applyPack(saved)
-	end
-end)
+
 
 -- GUI
 local function getParentGui()
@@ -1057,7 +1073,10 @@ applySelectedBtn.Activated:Connect(function()
             task.wait(0.03)
             hum:ChangeState(Enum.HumanoidStateType.Running)
         end)
-        current.Text = "Current: mixed"
+                lastPackName = currentPickerPack
+        pcall(function() player:SetAttribute(ATTR_LAST, currentPickerPack) end)
+        savePackToFile(currentPickerPack)
+        current.Text = "Current: " .. currentPickerPack
         pickerGui.Visible = false
     end
 end)
@@ -1110,14 +1129,29 @@ resetBtn.Activated:Connect(function()
             hum:ChangeState(Enum.HumanoidStateType.Running)
         end)
     end
+            lastPackName = ""
     player:SetAttribute("AnimPack_Last", "")
+    savePackToFile("")
     current.Text = "Current: (none)"
+end)
+
+-- Reapply on respawn
+player.CharacterAdded:Connect(function(char)
+	applying = false
+	saveOriginalsFromChar(char)
+	local saved = lastPackName ~= "" and lastPackName or loadPackFromFile()
+	if type(saved) == "string" and saved ~= "" and PACKS[saved] then
+		lastPackName = saved
+		applyPack(saved)
+		current.Text = "Current: " .. saved
+	end
 end)
 
 -- auto-load last pack (session)
 task.defer(function()
-	local saved = player:GetAttribute(ATTR_LAST)
+	local saved = lastPackName ~= "" and lastPackName or loadPackFromFile() or player:GetAttribute(ATTR_LAST)
 	if type(saved) == "string" and saved ~= "" and PACKS[saved] then
+		lastPackName = saved
 		current.Text = "Current: " .. saved .. " (saved)"
 		task.wait(0.2)
 		applyPack(saved)
