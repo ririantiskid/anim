@@ -622,26 +622,76 @@ layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(refreshCanvas)
 -- minimize
 local minimized = false
 local expandedSize = UDim2.new(0, 300, 0, 420)
-local minimizedSize = UDim2.new(expandedSize.X.Scale, expandedSize.X.Offset, 0, 36)
+local resetBtn
+
+-- minimized pill button
+local miniPill = Instance.new("TextButton")
+miniPill.Size = UDim2.new(0, 50, 0, 50)
+miniPill.Position = UDim2.new(0, 20, 0.5, -25)
+miniPill.BackgroundColor3 = Color3.fromRGB(10, 20, 60)
+miniPill.TextColor3 = Color3.fromRGB(30, 144, 255)
+miniPill.Font = Enum.Font.GothamBold
+miniPill.TextSize = 22
+miniPill.Text = "🌊"
+miniPill.BorderSizePixel = 0
+miniPill.Visible = false
+miniPill.ZIndex = 200
+miniPill.Parent = gui
+Instance.new("UICorner", miniPill).CornerRadius = UDim.new(0, 12)
+local miniPillStroke = Instance.new("UIStroke")
+miniPillStroke.Color = Color3.fromRGB(30, 144, 255)
+miniPillStroke.Transparency = 0.3
+miniPillStroke.Parent = miniPill
+
+-- drag for miniPill
+local pillDragging, pillDragStart, pillStartPos = false, nil, nil
+miniPill.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        pillDragging = true
+        pillDragStart = input.Position
+        pillStartPos = miniPill.Position
+    end
+end)
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        pillDragging = false
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if pillDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - pillDragStart
+        miniPill.Position = UDim2.new(
+            pillStartPos.X.Scale,
+            pillStartPos.X.Offset + delta.X,
+            pillStartPos.Y.Scale,
+            pillStartPos.Y.Offset + delta.Y
+        )
+    end
+end)
+
+miniPill.Activated:Connect(function()
+    if minimized then
+        minimized = false
+        frame.Visible = true
+        miniPill.Visible = false
+    end
+end)
+local sub = Instance.new("TextLabel")
+sub.Visible = false
+sub.Parent = frame
 
 local function setMinimized(on)
 	minimized = on
 	if minimized then
-		frame.Size = minimizedSize
-		miniBtn.Text = "+"
-		current.Visible = false
-		searchBox.Visible = false
-		listFrame.Visible = false
-		sub.Visible = false
-        resetBtn.Visible = false
+		frame.Visible = false
+		miniPill.Visible = true
 	else
-		frame.Size = expandedSize
-		miniBtn.Text = "-"
+		frame.Visible = true
+		miniPill.Visible = false
 		current.Visible = true
 		searchBox.Visible = true
 		listFrame.Visible = true
-		sub.Visible = true
-        resetBtn.Visible = true
+		resetBtn.Visible = true
 	end
 end
 
@@ -727,7 +777,7 @@ pickerScreen.DisplayOrder = 100
 pickerScreen.Parent = getParentGui()
 
 local pickerGui = Instance.new("Frame")
-pickerGui.Size = UDim2.new(0, 240, 0, 320)
+pickerGui.Size = UDim2.new(0, 240, 0, 400)
 pickerGui.AnchorPoint = Vector2.new(0.5, 0.5)
 pickerGui.Position = UDim2.new(0.5, 0, 0.5, 0)
 pickerGui.BackgroundColor3 = Color3.fromRGB(10, 20, 60)
@@ -795,7 +845,7 @@ UserInputService.InputChanged:Connect(function(input)
 end)
 
 local pickerScroll = Instance.new("ScrollingFrame")
-pickerScroll.Size = UDim2.new(1, -16, 1, -90)
+pickerScroll.Size = UDim2.new(1, -16, 1, -100)
 pickerScroll.Position = UDim2.new(0, 8, 0, 42)
 pickerScroll.BackgroundTransparency = 1
 pickerScroll.BorderSizePixel = 0
@@ -818,9 +868,59 @@ pickerLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     pickerScroll.CanvasSize = UDim2.new(0, 0, 0, pickerLayout.AbsoluteContentSize.Y + 10)
 end)
 
+local ACTIONS = {
+    {label = "Walk",  folderName = "walk",     animName = "WalkAnim",   packKey = "WalkAnim"},
+    {label = "Run",   folderName = "run",      animName = "RunAnim",    packKey = "RunAnim"},
+    {label = "Jump",  folderName = "jump",     animName = "JumpAnim",   packKey = "JumpAnim"},
+    {label = "Fall",  folderName = "fall",     animName = "FallAnim",   packKey = "FallAnim"},
+    {label = "Climb", folderName = "climb",    animName = "ClimbAnim",  packKey = "ClimbAnim"},
+    {label = "Swim",  folderName = "swim",     animName = "Swim",       packKey = "Swim"},
+    {label = "Idle",  folderName = "idle",     animName = "Animation1", packKey = "Animation1"},
+}
+local selectedActions = {}
+local actionCheckboxes = {}
+local currentPickerPack = nil
+
+local selectAllBtn = Instance.new("TextButton")
+selectAllBtn.Size = UDim2.new(1, -16, 0, 28)
+selectAllBtn.Position = UDim2.new(0, 8, 1, -84)
+selectAllBtn.BackgroundColor3 = Color3.fromRGB(10, 60, 140)
+selectAllBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+selectAllBtn.Font = Enum.Font.GothamBold
+selectAllBtn.TextSize = 12
+selectAllBtn.Text = "Select All"
+selectAllBtn.BorderSizePixel = 0
+selectAllBtn.ZIndex = 101
+selectAllBtn.Parent = pickerGui
+Instance.new("UICorner", selectAllBtn).CornerRadius = UDim.new(0, 10)
+
+local allSelected = false
+selectAllBtn.Activated:Connect(function()
+    allSelected = not allSelected
+    for _, action in ipairs(ACTIONS) do
+        selectedActions[action.label] = allSelected
+        local check = actionCheckboxes[action.label]
+        if check then
+            check.Text = allSelected and "●" or "○"
+            check.TextColor3 = allSelected
+                and Color3.fromRGB(30, 144, 255)
+                or Color3.fromRGB(100, 180, 255)
+        end
+    end
+    selectAllBtn.Text = allSelected and "Deselect All" or "Select All"
+    -- sync if all manually deselected
+    local anyOff = false
+    for _, action in ipairs(ACTIONS) do
+        if not selectedActions[action.label] then anyOff = true break end
+    end
+    if anyOff and allSelected then
+        allSelected = true
+    end
+end)
+
 local applySelectedBtn = Instance.new("TextButton")
 applySelectedBtn.Size = UDim2.new(1, -16, 0, 32)
-applySelectedBtn.Position = UDim2.new(0, 8, 1, -40)
+applySelectedBtn.Position = UDim2.new(0, 8, 1, -44)
 applySelectedBtn.BackgroundColor3 = Color3.fromRGB(20, 80, 180)
 applySelectedBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 applySelectedBtn.Font = Enum.Font.GothamBold
@@ -831,19 +931,7 @@ applySelectedBtn.ZIndex = 101
 applySelectedBtn.Parent = pickerGui
 Instance.new("UICorner", applySelectedBtn).CornerRadius = UDim.new(0, 10)
 
-local ACTIONS = {
-    {label = "Walk",  folderName = "walk",     animName = "WalkAnim",   packKey = "WalkAnim"},
-    {label = "Run",   folderName = "run",      animName = "RunAnim",    packKey = "RunAnim"},
-    {label = "Jump",  folderName = "jump",     animName = "JumpAnim",   packKey = "JumpAnim"},
-    {label = "Fall",  folderName = "fall",     animName = "FallAnim",   packKey = "FallAnim"},
-    {label = "Climb", folderName = "climb",    animName = "ClimbAnim",  packKey = "ClimbAnim"},
-    {label = "Swim",  folderName = "swim",     animName = "Swim",       packKey = "Swim"},
-    {label = "Idle",  folderName = "idle",     animName = "Animation1", packKey = "Animation1"},
-}
 
-local selectedActions = {}
-local currentPickerPack = nil
-local actionCheckboxes = {}
 
 for i, action in ipairs(ACTIONS) do
     local row = Instance.new("TextButton")
@@ -881,12 +969,19 @@ for i, action in ipairs(ACTIONS) do
     selectedActions[action.label] = false
     actionCheckboxes[action.label] = check
 
-    row.Activated:Connect(function()
+        row.Activated:Connect(function()
         selectedActions[action.label] = not selectedActions[action.label]
         check.Text = selectedActions[action.label] and "●" or "○"
-        check.TextColor3 = selectedActions[action.label] 
-            and Color3.fromRGB(30, 144, 255) 
+        check.TextColor3 = selectedActions[action.label]
+            and Color3.fromRGB(30, 144, 255)
             or Color3.fromRGB(100, 180, 255)
+        -- update allSelected state to match reality
+        local allOn = true
+        for _, a in ipairs(ACTIONS) do
+            if not selectedActions[a.label] then allOn = false break end
+        end
+        allSelected = allOn
+        selectAllBtn.Text = allSelected and "Deselect All" or "Select All"
     end)
 end
 
@@ -900,6 +995,17 @@ openPicker = function(packName)
         if actionCheckboxes[action] then
             actionCheckboxes[action].Text = "○"
             actionCheckboxes[action].TextColor3 = Color3.fromRGB(100, 180, 255)
+        end
+    end
+            allSelected = false
+    if selectAllBtn then
+        selectAllBtn.Text = "Select All"
+    end
+    for _, action in ipairs(ACTIONS) do
+        selectedActions[action.label] = false
+        if actionCheckboxes[action.label] then
+            actionCheckboxes[action.label].Text = "○"
+            actionCheckboxes[action.label].TextColor3 = Color3.fromRGB(100, 180, 255)
         end
     end
     pickerGui.Visible = true
@@ -956,7 +1062,7 @@ applySelectedBtn.Activated:Connect(function()
     end
 end)
 
-local resetBtn = Instance.new("TextButton")
+resetBtn = Instance.new("TextButton")
 resetBtn.Size = UDim2.new(1, -24, 0, 32)
 resetBtn.Position = UDim2.new(0, 12, 1, -44)
 resetBtn.BackgroundColor3 = Color3.fromRGB(180, 30, 30)
