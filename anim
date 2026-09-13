@@ -467,13 +467,13 @@ gui.ResetOnSpawn = false
 gui.Parent = getParentGui()
 
 local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 280, 0, 300)-- smaller
+frame.Size = UDim2.new(0, 300, 0, 420)-- smaller
 frame.Position = UDim2.new(0.5, -140, 0.5, -130)
 frame.BackgroundColor3 = Color3.fromRGB(10, 20, 60) -- dark green
 frame.BorderSizePixel = 0
 frame.Parent = gui
 frame.Active = true
-frame.ClipsDescendants = true
+frame.ClipsDescendants = false
 
 local fc = Instance.new("UICorner"); fc.CornerRadius = UDim.new(0, 12); fc.Parent = frame
 local st = Instance.new("UIStroke"); st.Color = Color3.fromRGB(30, 144, 255); st.Transparency = 0.3; st.Parent = frame
@@ -559,7 +559,7 @@ end)
 -- current label
 local current = Instance.new("TextLabel")
 current.Size = UDim2.new(1, -24, 0, 16)
-current.Position = UDim2.new(0, 12, 0, 54) -- below subtitle
+current.Position = UDim2.new(0, 12, 0, 40)-- below subtitle
 current.BackgroundTransparency = 1
 current.TextXAlignment = Enum.TextXAlignment.Left
 current.Font = Enum.Font.Gotham
@@ -571,7 +571,7 @@ current.Parent = frame
 -- search bar
 local searchBox = Instance.new("TextBox")
 searchBox.Size = UDim2.new(1, -24, 0, 28)
-searchBox.Position = UDim2.new(0, 12, 0, 74)
+searchBox.Position = UDim2.new(0, 12, 0, 60)
 searchBox.BackgroundColor3 = Color3.fromRGB(15, 40, 100)
 searchBox.TextColor3 = Color3.fromRGB(255,255,255)
 searchBox.PlaceholderText = "Search pack..."
@@ -585,8 +585,8 @@ Instance.new("UICorner", searchBox).CornerRadius = UDim.new(0, 10)
 
 -- list container
 local listFrame = Instance.new("Frame")
-listFrame.Size = UDim2.new(1, -24, 1, -120) -- height = 260 - 108 - 12? Actually offset -120 -> height = 260-120=140
-listFrame.Position = UDim2.new(0, 12, 0, 108)
+listFrame.Size = UDim2.new(1, -24, 1, -160) -- height = 260 - 108 - 12? Actually offset -120 -> height = 260-120=140
+listFrame.Position = UDim2.new(0, 12, 0, 95)
 listFrame.BackgroundColor3 = Color3.fromRGB(10, 30, 80)
 listFrame.BorderSizePixel = 0
 listFrame.Parent = frame
@@ -621,7 +621,7 @@ layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(refreshCanvas)
 
 -- minimize
 local minimized = false
-local expandedSize = UDim2.new(0, 280, 0, 300)
+local expandedSize = UDim2.new(0, 300, 0, 420)
 local minimizedSize = UDim2.new(expandedSize.X.Scale, expandedSize.X.Offset, 0, 36)
 
 local function setMinimized(on)
@@ -678,6 +678,7 @@ table.sort(allNames, function(a, b)
 end)
 
 local buttonsByName = {}
+local openPicker -- forward declare
 
 local function createButton(name, order)
 	local btn = Instance.new("TextButton")
@@ -694,8 +695,7 @@ local function createButton(name, order)
 	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 10)
 
 	btn.Activated:Connect(function()
-		local ok = applyPack(name)
-		current.Text = ok and ("Current: " .. name) or ("Current: (failed) " .. name)
+		openPicker(name)
 	end)
 
 	buttonsByName[name] = btn
@@ -719,9 +719,246 @@ searchBox:GetPropertyChangedSignal("Text"):Connect(function()
 end)
 applyFilter("")
 
+-- ACTION PICKER UI
+local pickerScreen = Instance.new("ScreenGui")
+pickerScreen.Name = "PickerGui"
+pickerScreen.ResetOnSpawn = false
+pickerScreen.DisplayOrder = 100
+pickerScreen.Parent = getParentGui()
+
+local pickerGui = Instance.new("Frame")
+pickerGui.Size = UDim2.new(0, 240, 0, 320)
+pickerGui.AnchorPoint = Vector2.new(0.5, 0.5)
+pickerGui.Position = UDim2.new(0.5, 0, 0.5, 0)
+pickerGui.BackgroundColor3 = Color3.fromRGB(10, 20, 60)
+pickerGui.BorderSizePixel = 0
+pickerGui.Visible = false
+pickerGui.ZIndex = 100
+pickerGui.Active = true
+pickerGui.Parent = pickerScreen
+Instance.new("UICorner", pickerGui).CornerRadius = UDim.new(0, 12)
+local pickerStroke = Instance.new("UIStroke")
+pickerStroke.Color = Color3.fromRGB(30, 144, 255)
+pickerStroke.Transparency = 0.3
+pickerStroke.Parent = pickerGui
+
+local pickerTitle = Instance.new("TextLabel")
+pickerTitle.Size = UDim2.new(1, -40, 0, 36)
+pickerTitle.Position = UDim2.new(0, 12, 0, 0)
+pickerTitle.BackgroundTransparency = 1
+pickerTitle.Font = Enum.Font.GothamBold
+pickerTitle.TextSize = 13
+pickerTitle.TextColor3 = Color3.fromRGB(30, 144, 255)
+pickerTitle.TextXAlignment = Enum.TextXAlignment.Left
+pickerTitle.Text = "Apply to..."
+pickerTitle.ZIndex = 101
+pickerTitle.Parent = pickerGui
+
+local pickerClose = Instance.new("TextButton")
+pickerClose.Size = UDim2.new(0, 36, 0, 36)
+pickerClose.Position = UDim2.new(1, -36, 0, 0)
+pickerClose.BackgroundTransparency = 1
+pickerClose.Text = "X"
+pickerClose.Font = Enum.Font.GothamBold
+pickerClose.TextSize = 14
+pickerClose.TextColor3 = Color3.fromRGB(220, 80, 80)
+pickerClose.ZIndex = 101
+pickerClose.Parent = pickerGui
+pickerClose.Activated:Connect(function()
+    pickerGui.Visible = false
+end)
+
+-- picker drag
+local pickerDragging, pickerDragStart, pickerStartPos = false, nil, nil
+pickerGui.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        pickerDragging = true
+        pickerDragStart = input.Position
+        pickerStartPos = pickerGui.Position
+    end
+end)
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        pickerDragging = false
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if pickerDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - pickerDragStart
+        pickerGui.Position = UDim2.new(
+            pickerStartPos.X.Scale,
+            pickerStartPos.X.Offset + delta.X,
+            pickerStartPos.Y.Scale,
+            pickerStartPos.Y.Offset + delta.Y
+        )
+    end
+end)
+
+local pickerScroll = Instance.new("ScrollingFrame")
+pickerScroll.Size = UDim2.new(1, -16, 1, -90)
+pickerScroll.Position = UDim2.new(0, 8, 0, 42)
+pickerScroll.BackgroundTransparency = 1
+pickerScroll.BorderSizePixel = 0
+pickerScroll.ScrollBarThickness = 4
+pickerScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+pickerScroll.ZIndex = 101
+pickerScroll.Parent = pickerGui
+
+local pickerLayout = Instance.new("UIListLayout")
+pickerLayout.Padding = UDim.new(0, 5)
+pickerLayout.SortOrder = Enum.SortOrder.LayoutOrder
+pickerLayout.Parent = pickerScroll
+local pickerPad = Instance.new("UIPadding")
+pickerPad.PaddingTop = UDim.new(0, 4)
+pickerPad.PaddingLeft = UDim.new(0, 4)
+pickerPad.PaddingRight = UDim.new(0, 4)
+pickerPad.Parent = pickerScroll
+pickerLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    task.wait()
+    pickerScroll.CanvasSize = UDim2.new(0, 0, 0, pickerLayout.AbsoluteContentSize.Y + 10)
+end)
+
+local applySelectedBtn = Instance.new("TextButton")
+applySelectedBtn.Size = UDim2.new(1, -16, 0, 32)
+applySelectedBtn.Position = UDim2.new(0, 8, 1, -40)
+applySelectedBtn.BackgroundColor3 = Color3.fromRGB(20, 80, 180)
+applySelectedBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+applySelectedBtn.Font = Enum.Font.GothamBold
+applySelectedBtn.TextSize = 13
+applySelectedBtn.Text = "Apply Selected"
+applySelectedBtn.BorderSizePixel = 0
+applySelectedBtn.ZIndex = 101
+applySelectedBtn.Parent = pickerGui
+Instance.new("UICorner", applySelectedBtn).CornerRadius = UDim.new(0, 10)
+
+local ACTIONS = {
+    {label = "Walk",  folderName = "walk",     animName = "WalkAnim",   packKey = "WalkAnim"},
+    {label = "Run",   folderName = "run",      animName = "RunAnim",    packKey = "RunAnim"},
+    {label = "Jump",  folderName = "jump",     animName = "JumpAnim",   packKey = "JumpAnim"},
+    {label = "Fall",  folderName = "fall",     animName = "FallAnim",   packKey = "FallAnim"},
+    {label = "Climb", folderName = "climb",    animName = "ClimbAnim",  packKey = "ClimbAnim"},
+    {label = "Swim",  folderName = "swim",     animName = "Swim",       packKey = "Swim"},
+    {label = "Idle",  folderName = "idle",     animName = "Animation1", packKey = "Animation1"},
+}
+
+local selectedActions = {}
+local currentPickerPack = nil
+local actionCheckboxes = {}
+
+for i, action in ipairs(ACTIONS) do
+    local row = Instance.new("TextButton")
+    row.Size = UDim2.new(1, 0, 0, 30)
+    row.BackgroundColor3 = Color3.fromRGB(15, 40, 100)
+    row.BorderSizePixel = 0
+    row.LayoutOrder = i
+     row.ZIndex = 101
+    row.Parent = pickerScroll
+    Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
+
+    local check = Instance.new("TextLabel")
+    check.Size = UDim2.new(0, 24, 1, 0)
+    check.Position = UDim2.new(0, 6, 0, 0)
+    check.BackgroundTransparency = 1
+    check.Text = "○"
+    check.Font = Enum.Font.GothamBold
+    check.TextSize = 14
+    check.TextColor3 = Color3.fromRGB(100, 180, 255)
+    check.ZIndex = 102
+    check.Parent = row
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -36, 1, 0)
+    lbl.Position = UDim2.new(0, 32, 0, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = action.label
+    lbl.Font = Enum.Font.Gotham
+    lbl.TextSize = 13
+    lbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.ZIndex = 102
+    lbl.Parent = row
+
+    selectedActions[action.label] = false
+    actionCheckboxes[action.label] = check
+
+    row.Activated:Connect(function()
+        selectedActions[action.label] = not selectedActions[action.label]
+        check.Text = selectedActions[action.label] and "●" or "○"
+        check.TextColor3 = selectedActions[action.label] 
+            and Color3.fromRGB(30, 144, 255) 
+            or Color3.fromRGB(100, 180, 255)
+    end)
+end
+
+openPicker = function(packName)
+    print("opening picker for", packName)
+    currentPickerPack = packName
+    pickerTitle.Text = packName
+    -- reset selections
+    for action, _ in pairs(selectedActions) do
+        selectedActions[action] = false
+        if actionCheckboxes[action] then
+            actionCheckboxes[action].Text = "○"
+            actionCheckboxes[action].TextColor3 = Color3.fromRGB(100, 180, 255)
+        end
+    end
+    pickerGui.Visible = true
+end
+
+applySelectedBtn.Activated:Connect(function()
+    if not currentPickerPack then return end
+    local pack = PACKS[currentPickerPack]
+    if not pack then return end
+    local char = player.Character
+    if not char then return end
+    local animate = char:FindFirstChild("Animate")
+    if not animate then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+
+    local anySelected = false
+    for _, action in ipairs(ACTIONS) do
+        if selectedActions[action.label] then
+            anySelected = true
+            local id = pick(pack, action.packKey)
+            if id then
+                local folder = animate:FindFirstChild(action.folderName)
+                if folder then
+                    local animObj = folder:FindFirstChild(action.animName)
+                    if not animObj then
+                        animObj = Instance.new("Animation")
+                        animObj.Name = action.animName
+                        animObj.Parent = folder
+                    end
+                    animObj.AnimationId = "rbxassetid://" .. tostring(id)
+                    if action.label == "Idle" then
+                        local a2 = folder:FindFirstChild("Animation2")
+                        if a2 then
+                            a2.AnimationId = "rbxassetid://" .. tostring(id)
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    if anySelected then
+        stopAllTracks(hum)
+        animate.Disabled = true
+        task.wait(0.06)
+        animate.Disabled = false
+        pcall(function()
+            hum:ChangeState(Enum.HumanoidStateType.Landed)
+            task.wait(0.03)
+            hum:ChangeState(Enum.HumanoidStateType.Running)
+        end)
+        current.Text = "Current: mixed"
+        pickerGui.Visible = false
+    end
+end)
+
 local resetBtn = Instance.new("TextButton")
 resetBtn.Size = UDim2.new(1, -24, 0, 32)
-resetBtn.Position = UDim2.new(0, 12, 0, 224)
+resetBtn.Position = UDim2.new(0, 12, 1, -44)
 resetBtn.BackgroundColor3 = Color3.fromRGB(180, 30, 30)
 resetBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 resetBtn.Font = Enum.Font.GothamBold
